@@ -182,52 +182,24 @@ static void RCTInstallJSCProfiler(RCTBridge *bridge, JSContextRef context)
 
 - (instancetype)init
 {
-  NSThread *javaScriptThread = [[NSThread alloc] initWithTarget:[self class]
-                                                       selector:@selector(runRunLoopThread)
-                                                         object:nil];
-  javaScriptThread.name = RCTJSCThreadName;
-
-  if ([javaScriptThread respondsToSelector:@selector(setQualityOfService:)]) {
-    [javaScriptThread setQualityOfService:NSOperationQualityOfServiceUserInteractive];
-  } else {
-    javaScriptThread.threadPriority = [NSThread mainThread].threadPriority;
-  }
-
-  [javaScriptThread start];
-
-  return [self initWithJavaScriptThread:javaScriptThread context:nil];
-}
-
-- (instancetype)initWithJavaScriptThread:(NSThread *)javaScriptThread
-                                 context:(JSContext *)context
-{
-  RCTAssert(javaScriptThread != nil,
-            @"Can't initialize RCTJSCExecutor without a javaScriptThread");
-
-  if ((self = [super init])) {
+  if (self = [super init]) {
     _valid = YES;
-    _javaScriptThread = javaScriptThread;
-    __weak RCTJSCExecutor *weakSelf = self;
-    [self executeBlockOnJavaScriptQueue: ^{
-      RCTJSCExecutor *strongSelf = weakSelf;
-      if (!strongSelf) {
-        return;
-      }
-      // Assumes that no other JS tasks are scheduled before.
-      if (context) {
-        strongSelf->_context = [[RCTJavaScriptContext alloc] initWithJSContext:context];
-      }
-    }];
+
+    _javaScriptThread = [[NSThread alloc] initWithTarget:[self class]
+                                                selector:@selector(runRunLoopThread)
+                                                  object:nil];
+    _javaScriptThread.name = @"com.facebook.React.JavaScript";
+
+    if ([_javaScriptThread respondsToSelector:@selector(setQualityOfService:)]) {
+      [_javaScriptThread setQualityOfService:NSOperationQualityOfServiceUserInteractive];
+    } else {
+      _javaScriptThread.threadPriority = [NSThread mainThread].threadPriority;
+    }
+
+    [_javaScriptThread start];
   }
 
   return self;
-}
-
-- (instancetype)initWithJavaScriptThread:(NSThread *)javaScriptThread
-                        globalContextRef:(JSGlobalContextRef)contextRef
-{
-  JSContext *context = contextRef ? [JSContext contextWithJSGlobalContextRef:contextRef] : nil;
-  return [self initWithJavaScriptThread:javaScriptThread context:context];
 }
 
 - (RCTJavaScriptContext *)context
@@ -717,9 +689,6 @@ static uint32_t readUint32(const void **ptr) {
 
   // offset where the code starts on the bundle
   const uint32_t baseOffset = currentOffset + tableLength;
-
-  // skip table length
-  currentOffset += sizeof(baseOffset);
 
   // pointer to first byte out of the index
   const uint8_t *endOfTable = bytes + baseOffset;

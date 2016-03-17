@@ -1,5 +1,10 @@
 /**
- * Copyright (c) 2015, Facebook, Inc.  All rights reserved.
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
  *
  * Facebook, Inc. ("Facebook") owns all right, title and interest, including
  * all intellectual property and other proprietary rights, in and to the React
@@ -30,15 +35,16 @@
 const NavigationAnimatedValueSubscription = require('NavigationAnimatedValueSubscription');
 const NavigationAnimatedView = require('NavigationAnimatedView');
 const NavigationCard = require('NavigationCard');
+const NavigationCardStackStyleInterpolator = require('NavigationCardStackStyleInterpolator');
 const NavigationContext = require('NavigationContext');
 const NavigationLegacyNavigatorRouteStack = require('NavigationLegacyNavigatorRouteStack');
+const NavigationLinearPanResponder = require('NavigationLinearPanResponder');
 const NavigatorBreadcrumbNavigationBar = require('NavigatorBreadcrumbNavigationBar');
 const NavigatorNavigationBar = require('NavigatorNavigationBar');
 const NavigatorSceneConfigs = require('NavigatorSceneConfigs');
 const React = require('react-native');
 const ReactComponentWithPureRenderMixin = require('ReactComponentWithPureRenderMixin');
 
-const invariant = require('fbjs/lib/invariant');
 const guid = require('guid');
 
 import type  {
@@ -122,20 +128,15 @@ class NavigationLegacyNavigator extends React.Component<any, Props, State> {
   }
 
   jumpTo(route: any): void {
-    const index = this._stack.indexOf(route);
-    invariant(
-      index > -1,
-      'Cannot jump to route that is not in the route stack'
-    );
-    this._jumpToIndex(index);
+    this._applyStack(this._stack.jumpTo(route));
   }
 
   jumpForward(): void {
-    this._jumpToIndex(this._stack.index + 1);
+    this._applyStack(this._stack.jumpForward());
   }
 
   jumpBack(): void {
-    this._jumpToIndex(this._stack.index - 1);
+    this._applyStack(this._stack.jumpBack());
   }
 
   push(route: any): void {
@@ -143,25 +144,11 @@ class NavigationLegacyNavigator extends React.Component<any, Props, State> {
   }
 
   pop(): void {
-    const stack = this._stack;
-    if (stack.size > 1) {
-      this._applyStack(stack.pop());
-    }
+    this._applyStack(this._stack.pop());
   }
 
   replaceAtIndex(route: any, index: number): void {
-    const stack = this._stack;
-
-    if (index < 0) {
-      index += stack.size;
-    }
-
-    if (index >= stack.size) {
-      // Nothing to replace.
-      return;
-    }
-
-    this._applyStack(stack.replaceAtIndex(index, route));
+    this._applyStack(this._stack.replaceAtIndex(index, route));
   }
 
   replace(route: any): void {
@@ -177,47 +164,25 @@ class NavigationLegacyNavigator extends React.Component<any, Props, State> {
   }
 
   popToRoute(route: any): void {
-    const stack = this._stack;
-    const nextIndex = stack.indexOf(route);
-    invariant(
-      nextIndex > -1,
-      'Calling popToRoute for a route that doesn\'t exist!'
-    );
-    this._applyStack(stack.slice(0, nextIndex + 1));
+    this._applyStack(this._stack.popToRoute(route));
   }
 
   replacePreviousAndPop(route: any): void {
-    const stack = this._stack;
-    const nextIndex = stack.index - 1;
-    if (nextIndex < 0) {
-      return;
-    }
-    this._applyStack(stack.replaceAtIndex(nextIndex, route).pop());
+    this._applyStack(this._stack.replacePreviousAndPop(route));
   }
 
   resetTo(route: any): void {
-    invariant(!!route, 'Must supply route');
-    this._applyStack(this._stack.slice(0).replaceAtIndex(0, route));
+    this._applyStack(this._stack.resetTo(route));
   }
 
   immediatelyResetRouteStack(routes: Array<any>): void {
-    const index = routes.length - 1;
-    const stack = new RouteStack(index, routes);
     // Immediately blow away all current scenes with a new key.
     this._key = guid();
-    this._applyStack(stack);
+    this._applyStack(this._stack.resetRoutes(routes));
   }
 
   getCurrentRoutes(): Array<any> {
     return this._stack.toArray();
-  }
-
-  _jumpToIndex(index: number): void {
-    const stack = this._stack;
-    if (index < 0 || index >= stack.size) {
-      return;
-    }
-    this._applyStack(stack.jumpToIndex(index));
   }
 
   // Lyfe cycle and private methods below.
@@ -287,38 +252,48 @@ class NavigationLegacyNavigator extends React.Component<any, Props, State> {
   }
 
   _renderCard(props: NavigationSceneRendererProps): ReactElement {
-    let direction = 'horizontal';
-
-    const {navigationState} = props.scene;
+    const {scene} = props;
     const {configureScene} = this.props;
 
-    if (configureScene) {
-      const route = RouteStack.getRouteByNavigationState(navigationState);
-      const config = configureScene(route, this.state.routeStack);
+    let isVertical = false;
 
-      switch (getConfigPopDirection(config)) {
+    if (configureScene) {
+      const route = RouteStack.getRouteByNavigationState(scene.navigationState);
+      const config = configureScene(route, this.state.routeStack);
+      const direction = getConfigPopDirection(config);
+
+      switch (direction) {
         case 'left-to-right':
-          direction = 'horizontal';
+          // default.
           break;
 
         case 'top-to-bottom':
-          direction = 'vertical';
+          isVertical = true;
           break;
 
         default:
           // unsupported config.
           if (__DEV__) {
-            console.warn('unsupported scene configuration');
+            console.warn('unsupported scene configuration %s', direction);
           }
       }
     }
 
+    const style = isVertical ?
+      NavigationCardStackStyleInterpolator.forVertical(props) :
+      NavigationCardStackStyleInterpolator.forHorizontal(props);
+
+    const panHandlers = isVertical ?
+      NavigationLinearPanResponder.forVertical(props) :
+      NavigationLinearPanResponder.forHorizontal(props);
+
     return (
       <NavigationCard
         {...props}
-        direction={direction}
-        key={'card_' + navigationState.key}
+        key={'card_' + props.scene.navigationState.key}
+        panHandlers={panHandlers}
         renderScene={this._renderScene}
+        style={style}
       />
     );
   }
