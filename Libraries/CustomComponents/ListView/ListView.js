@@ -1,5 +1,10 @@
 /**
- * Copyright (c) 2015, Facebook, Inc.  All rights reserved.
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
  *
  * Facebook, Inc. ("Facebook") owns all right, title and interest, including
  * all intellectual property and other proprietary rights, in and to the React
@@ -28,6 +33,7 @@
 
 var ListViewDataSource = require('ListViewDataSource');
 var React = require('React');
+var ReactNative = require('ReactNative');
 var RCTScrollViewManager = require('NativeModules').ScrollViewManager;
 var ScrollView = require('ScrollView');
 var ScrollResponder = require('ScrollResponder');
@@ -246,6 +252,11 @@ var ListView = React.createClass({
       this.refs[SCROLLVIEW_REF].getScrollResponder();
   },
 
+  /**
+   * Scrolls to a given x, y offset, either immediately or with a smooth animation.
+   *
+   * See `ScrollView#scrollTo`.
+   */
   scrollTo: function(...args) {
     this.refs[SCROLLVIEW_REF] &&
       this.refs[SCROLLVIEW_REF].scrollTo &&
@@ -328,7 +339,7 @@ var ListView = React.createClass({
     });
   },
 
-  onRowHighlighted: function(sectionID, rowID) {
+  _onRowHighlighted: function(sectionID, rowID) {
     this.setState({highlightedRow: {sectionID, rowID}});
   },
 
@@ -394,7 +405,7 @@ var ListView = React.createClass({
               dataSource.getRowData(sectionIdx, rowIdx),
               sectionID,
               rowID,
-              this.onRowHighlighted
+              this._onRowHighlighted
             )}
           />;
         bodyComponents.push(row);
@@ -471,7 +482,7 @@ var ListView = React.createClass({
     // every platform
     RCTScrollViewManager && RCTScrollViewManager.calculateChildFrames &&
       RCTScrollViewManager.calculateChildFrames(
-        React.findNodeHandle(scrollComponent),
+        ReactNative.findNodeHandle(scrollComponent),
         this._updateVisibleRows,
       );
   },
@@ -527,7 +538,7 @@ var ListView = React.createClass({
     this.setState((state, props) => {
       var rowsToRender = Math.min(
         state.curRenderedRowsCount + props.pageSize,
-        props.dataSource.getRowAndSectionCount()
+        (props.enableEmptySections ? props.dataSource.getRowAndSectionCount() : props.dataSource.getRowCount())
       );
       this._prevRenderedRowsCount = state.curRenderedRowsCount;
       return {

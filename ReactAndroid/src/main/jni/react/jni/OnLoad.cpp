@@ -204,6 +204,8 @@ jni::local_ref<ReadableNativeArray::jhybridobject> ReadableNativeArray::getArray
   }
 }
 
+// Export getMap() so we can workaround constructing ReadableNativeMap
+__attribute__((visibility("default")))
 jobject ReadableNativeArray::getMap(jint index) {
   return createReadableNativeMapWithContents(Environment::current(), array.at(index));
 }
@@ -235,7 +237,7 @@ struct WritableNativeArray
   static constexpr const char* kJavaDescriptor = "Lcom/facebook/react/bridge/WritableNativeArray;";
 
   WritableNativeArray()
-      : HybridBase(folly::dynamic({})) {}
+      : HybridBase(folly::dynamic::array()) {}
 
   static local_ref<jhybriddata> initHybrid(alias_ref<jclass>) {
     return makeCxxInstance();

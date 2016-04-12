@@ -33,11 +33,13 @@
 'use strict';
 
 const Animated = require('Animated');
+const NavigationCardStackPanResponder = require('NavigationCardStackPanResponder');
 const NavigationCardStackStyleInterpolator = require('NavigationCardStackStyleInterpolator');
 const NavigationContainer = require('NavigationContainer');
-const NavigationLinearPanResponder = require('NavigationLinearPanResponder');
+const NavigationPagerPanResponder = require('NavigationPagerPanResponder');
+const NavigationPagerStyleInterpolator = require('NavigationPagerStyleInterpolator');
 const NavigationPropTypes = require('NavigationPropTypes');
-const React = require('react-native');
+const React = require('React');
 const ReactComponentWithPureRenderMixin = require('ReactComponentWithPureRenderMixin');
 const StyleSheet = require('StyleSheet');
 const View = require('View');
@@ -78,24 +80,44 @@ class NavigationCard extends React.Component<any, Props, any> {
   }
 
   render(): ReactElement {
-    let {
-      style,
+    const {
       panHandlers,
       renderScene,
-      ...props,
+      style,
+      ...props, /* NavigationSceneRendererProps */
     } = this.props;
 
+    let viewStyle = null;
     if (style === undefined) {
       // fall back to default style.
-      style = NavigationCardStackStyleInterpolator.forHorizontal(props);
+      viewStyle = NavigationCardStackStyleInterpolator.forHorizontal(props);
+    } else {
+      viewStyle = style;
     }
-    if (panHandlers === undefined) {
-      // fall back to default pan handlers.
-      panHandlers = NavigationLinearPanResponder.forHorizontal(props);
+
+    const  {
+      navigationState,
+      scene,
+    } = props;
+
+    const interactive = navigationState.index === scene.index && !scene.isStale;
+    const pointerEvents = interactive ? 'auto' : 'none';
+
+    let viewPanHandlers = null;
+    if (interactive) {
+      if (panHandlers === undefined) {
+        // fall back to default pan handlers.
+        viewPanHandlers = NavigationCardStackPanResponder.forHorizontal(props);
+      } else {
+        viewPanHandlers = panHandlers;
+      }
     }
 
     return (
-      <Animated.View {...panHandlers} style={[styles.main, style]}>
+      <Animated.View
+        {...viewPanHandlers}
+        pointerEvents={pointerEvents}
+        style={[styles.main, viewStyle]}>
         {renderScene(props)}
       </Animated.View>
     );
@@ -119,4 +141,13 @@ const styles = StyleSheet.create({
   },
 });
 
-module.exports = NavigationContainer.create(NavigationCard);
+
+const NavigationCardContainer = NavigationContainer.create(NavigationCard);
+
+// Export these buil-in interaction modules.
+NavigationCardContainer.CardStackPanResponder = NavigationCardStackPanResponder;
+NavigationCardContainer.CardStackStyleInterpolator = NavigationCardStackStyleInterpolator;
+NavigationCardContainer.PagerPanResponder = NavigationPagerPanResponder;
+NavigationCardContainer.PagerStyleInterpolator = NavigationPagerStyleInterpolator;
+
+module.exports = NavigationCardContainer;
