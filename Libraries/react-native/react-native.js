@@ -14,7 +14,7 @@ var warning = require('fbjs/lib/warning');
 
 if (__DEV__) {
   var warningDedupe = {};
-  var addonWarn = function addonWarn(prevName, newPackageName) {
+  var addonWarn = function(prevName, newPackageName) {
     warning(
       warningDedupe[prevName],
       'React.addons.' + prevName + ' is deprecated. Please import the "' +
@@ -49,7 +49,6 @@ var ReactNative = {
   get SliderIOS() { return require('SliderIOS'); },
   get SnapshotViewIOS() { return require('SnapshotViewIOS'); },
   get Switch() { return require('Switch'); },
-  get PullToRefreshViewAndroid() { return require('PullToRefreshViewAndroid'); },
   get RecyclerViewBackedScrollView() { return require('RecyclerViewBackedScrollView'); },
   get RefreshControl() { return require('RefreshControl'); },
   get StatusBar() { return require('StatusBar'); },
@@ -155,12 +154,6 @@ var ReactNative = {
       }
       return require('ReactUpdates').batchedUpdates;
     },
-    get cloneWithProps() {
-      if (__DEV__) {
-        addonWarn('cloneWithProps', 'react-addons-clone-with-props');
-      }
-      return require('cloneWithProps');
-    },
     get createFragment() {
       if (__DEV__) {
         addonWarn('createFragment', 'react-addons-create-fragment');
@@ -201,7 +194,7 @@ if (__DEV__) {
       if (__DEV__) {
         addonWarn('Perf', 'react-addons-perf');
       }
-      return require('ReactDefaultPerf');
+      return require('ReactPerf');
     }
   });
   Object.defineProperty(ReactNative.addons, 'TestUtils', {

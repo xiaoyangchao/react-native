@@ -9,15 +9,6 @@
 
 package com.facebook.react.modules.network;
 
-import javax.annotation.Nullable;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Reader;
-
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ExecutorToken;
 import com.facebook.react.bridge.GuardedAsyncTask;
@@ -28,19 +19,29 @@ import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.common.network.OkHttpCallUtil;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
-import com.squareup.okhttp.Callback;
-import com.squareup.okhttp.Headers;
-import com.squareup.okhttp.MediaType;
-import com.squareup.okhttp.MultipartBuilder;
-import com.squareup.okhttp.OkHttpClient;
-import com.squareup.okhttp.Request;
-import com.squareup.okhttp.RequestBody;
-import com.squareup.okhttp.Response;
-import com.squareup.okhttp.ResponseBody;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.net.SocketTimeoutException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-import static java.lang.Math.min;
+import javax.annotation.Nullable;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.Headers;
+import okhttp3.JavaNetCookieJar;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 /**
  * Implements the XMLHttpRequest JavaScript interface.
@@ -59,6 +60,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
   private final OkHttpClient mClient;
   private final ForwardingCookieHandler mCookieHandler;
   private final @Nullable String mDefaultUserAgent;
+  private final CookieJarContainer mCookieJarContainer;
   private boolean mShuttingDown;
 
   /* package */ NetworkingModule(
@@ -67,13 +69,18 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
       OkHttpClient client,
       @Nullable List<NetworkInterceptorCreator> networkInterceptorCreators) {
     super(reactContext);
-    mClient = client;
+    
     if (networkInterceptorCreators != null) {
+      OkHttpClient.Builder clientBuilder = client.newBuilder();
       for (NetworkInterceptorCreator networkInterceptorCreator : networkInterceptorCreators) {
-        mClient.networkInterceptors().add(networkInterceptorCreator.create());
+        clientBuilder.addNetworkInterceptor(networkInterceptorCreator.create());
       }
+      client = clientBuilder.build();
     }
+    mClient = client;
+    OkHttpClientProvider.replaceOkHttpClient(client);
     mCookieHandler = new ForwardingCookieHandler(reactContext);
+    mCookieJarContainer = (CookieJarContainer) mClient.cookieJar();
     mShuttingDown = false;
     mDefaultUserAgent = defaultUserAgent;
   }
@@ -84,7 +91,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
    * caller does not provide one explicitly
    * @param client the {@link OkHttpClient} to be used for networking
    */
-  public NetworkingModule(
+  /* package */ NetworkingModule(
     ReactApplicationContext context,
     @Nullable String defaultUserAgent,
     OkHttpClient client) {
@@ -118,13 +125,9 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     this(context, defaultUserAgent, OkHttpClientProvider.getOkHttpClient(), null);
   }
 
-  public NetworkingModule(ReactApplicationContext reactContext, OkHttpClient client) {
-    this(reactContext, null, client, null);
-  }
-
   @Override
   public void initialize() {
-    mClient.setCookieHandler(mCookieHandler);
+    mCookieJarContainer.setCookieJar(new JavaNetCookieJar(mCookieHandler));
   }
 
   @Override
@@ -135,10 +138,10 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
   @Override
   public void onCatalystInstanceDestroy() {
     mShuttingDown = true;
-    mClient.cancel(null);
+    OkHttpCallUtil.cancelAll(mClient);
 
     mCookieHandler.destroy();
-    mClient.setCookieHandler(null);
+    mCookieJarContainer.removeCookieJar();
   }
 
   @ReactMethod
@@ -165,14 +168,15 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     // client and set the timeout explicitly on the clone.  This is cheap as everything else is
     // shared under the hood.
     // See https://github.com/square/okhttp/wiki/Recipes#per-call-configuration for more information
-    if (timeout != mClient.getConnectTimeout()) {
-      client = mClient.clone();
-      client.setReadTimeout(timeout, TimeUnit.MILLISECONDS);
+    if (timeout != mClient.connectTimeoutMillis()) {
+      client = mClient.newBuilder()
+        .readTimeout(timeout, TimeUnit.MILLISECONDS)
+        .build();
     }
 
     Headers requestHeaders = extractHeaders(headers, data);
     if (requestHeaders == null) {
-      onRequestError(executorToken, requestId, "Unrecognized headers format");
+      onRequestError(executorToken, requestId, "Unrecognized headers format", null);
       return;
     }
     String contentType = requestHeaders.get(CONTENT_TYPE_HEADER_NAME);
@@ -186,7 +190,8 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
         onRequestError(
             executorToken,
             requestId,
-            "Payload is set but no content-type header specified");
+            "Payload is set but no content-type header specified",
+            null);
         return;
       }
       String body = data.getString(REQUEST_BODY_KEY_STRING);
@@ -194,7 +199,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
       if (RequestBodyUtil.isGzipEncoding(contentEncoding)) {
         RequestBody requestBody = RequestBodyUtil.createGzip(contentMediaType, body);
         if (requestBody == null) {
-          onRequestError(executorToken, requestId, "Failed to gzip request body");
+          onRequestError(executorToken, requestId, "Failed to gzip request body", null);
           return;
         }
         requestBuilder.method(method, requestBody);
@@ -206,14 +211,15 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
         onRequestError(
             executorToken,
             requestId,
-            "Payload is set but no content-type header specified");
+            "Payload is set but no content-type header specified",
+            null);
         return;
       }
       String uri = data.getString(REQUEST_BODY_KEY_URI);
       InputStream fileInputStream =
           RequestBodyUtil.getFileInputStream(getReactApplicationContext(), uri);
       if (fileInputStream == null) {
-        onRequestError(executorToken, requestId, "Could not retrieve file for uri " + uri);
+        onRequestError(executorToken, requestId, "Could not retrieve file for uri " + uri, null);
         return;
       }
       requestBuilder.method(
@@ -224,7 +230,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
         contentType = "multipart/form-data";
       }
       ReadableArray parts = data.getArray(REQUEST_BODY_KEY_FORMDATA);
-      MultipartBuilder multipartBuilder =
+      MultipartBody.Builder multipartBuilder =
           constructMultipartBody(executorToken, parts, contentType, requestId);
       if (multipartBuilder == null) {
         return;
@@ -238,15 +244,15 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     client.newCall(requestBuilder.build()).enqueue(
         new Callback() {
           @Override
-          public void onFailure(Request request, IOException e) {
+          public void onFailure(Call call, IOException e) {
             if (mShuttingDown) {
               return;
             }
-            onRequestError(executorToken, requestId, e.getMessage());
+            onRequestError(executorToken, requestId, e.getMessage(), e);
           }
 
           @Override
-          public void onResponse(Response response) throws IOException {
+          public void onResponse(Call call, Response response) throws IOException {
             if (mShuttingDown) {
               return;
             }
@@ -264,7 +270,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
                 onRequestSuccess(executorToken, requestId);
               }
             } catch (IOException e) {
-              onRequestError(executorToken, requestId, e.getMessage());
+              onRequestError(executorToken, requestId, e.getMessage(), e);
             }
           }
         });
@@ -294,10 +300,14 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     getEventEmitter(ExecutorToken).emit("didReceiveNetworkData", args);
   }
 
-  private void onRequestError(ExecutorToken ExecutorToken, int requestId, String error) {
+  private void onRequestError(ExecutorToken ExecutorToken, int requestId, String error, IOException e) {
     WritableArray args = Arguments.createArray();
     args.pushInt(requestId);
     args.pushString(error);
+
+    if ((e != null) && (e.getClass() == SocketTimeoutException.class)) {
+      args.pushBoolean(true); // last argument is a time out boolean
+    }
 
     getEventEmitter(ExecutorToken).emit("didCompleteNetworkResponse", args);
   }
@@ -320,7 +330,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     args.pushInt(requestId);
     args.pushInt(response.code());
     args.pushMap(headers);
-    args.pushString(response.request().urlString());
+    args.pushString(response.request().url().toString());
 
     getEventEmitter(ExecutorToken).emit("didReceiveNetworkResponse", args);
   }
@@ -348,7 +358,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     new GuardedAsyncTask<Void, Void>(getReactApplicationContext()) {
       @Override
       protected void doInBackgroundGuarded(Void... params) {
-        mClient.cancel(requestId);
+        OkHttpCallUtil.cancelTag(mClient, requestId);
       }
     }.execute();
   }
@@ -365,15 +375,13 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
     return true;
   }
 
-  private
-  @Nullable
-  MultipartBuilder constructMultipartBody(
+  private @Nullable MultipartBody.Builder constructMultipartBody(
       ExecutorToken ExecutorToken,
       ReadableArray body,
       String contentType,
       int requestId) {
-    MultipartBuilder multipartBuilder = new MultipartBuilder();
-    multipartBuilder.type(MediaType.parse(contentType));
+    MultipartBody.Builder multipartBuilder = new MultipartBody.Builder();
+    multipartBuilder.setType(MediaType.parse(contentType));
 
     for (int i = 0, size = body.size(); i < size; i++) {
       ReadableMap bodyPart = body.getMap(i);
@@ -385,7 +393,8 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
         onRequestError(
             ExecutorToken,
             requestId,
-            "Missing or invalid header format for FormData part.");
+            "Missing or invalid header format for FormData part.",
+            null);
         return null;
       }
       MediaType partContentType = null;
@@ -405,7 +414,8 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
           onRequestError(
               ExecutorToken,
               requestId,
-              "Binary FormData part needs a content-type header.");
+              "Binary FormData part needs a content-type header.",
+              null);
           return null;
         }
         String fileContentUriStr = bodyPart.getString(REQUEST_BODY_KEY_URI);
@@ -415,12 +425,13 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
           onRequestError(
               ExecutorToken,
               requestId,
-              "Could not retrieve file for uri " + fileContentUriStr);
+              "Could not retrieve file for uri " + fileContentUriStr,
+              null);
           return null;
         }
         multipartBuilder.addPart(headers, RequestBodyUtil.create(partContentType, fileInputStream));
       } else {
-        onRequestError(ExecutorToken, requestId, "Unrecognized FormData part.");
+        onRequestError(ExecutorToken, requestId, "Unrecognized FormData part.", null);
       }
     }
     return multipartBuilder;
@@ -429,9 +440,7 @@ public final class NetworkingModule extends ReactContextBaseJavaModule {
   /**
    * Extracts the headers from the Array. If the format is invalid, this method will return null.
    */
-  private
-  @Nullable
-  Headers extractHeaders(
+  private @Nullable Headers extractHeaders(
       @Nullable ReadableArray headersArray,
       @Nullable ReadableMap requestData) {
     if (headersArray == null) {

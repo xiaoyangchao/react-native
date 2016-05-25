@@ -38,13 +38,14 @@ const {
 } = ReactNative;
 
 type Props = {
-  children: ReactElement;
+  children: ReactElement<any>;
   style: any;
   textStyle: any;
+  viewProps: any;
 }
 
-const NavigationHeaderTitle = ({ children, style, textStyle }: Props) => (
-  <View style={[ styles.title, style ]}>
+const NavigationHeaderTitle = ({ children, style, textStyle, viewProps }: Props) => (
+  <View style={[ styles.title, style ]} {...viewProps}>
     <Text style={[ styles.titleText, textStyle ]}>{children}</Text>
   </View>
 );

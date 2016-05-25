@@ -532,7 +532,7 @@ exports.examples = [
   },
   {
     title: 'Event handling',
-    render: function(): ReactElement { return <TextEventsExample />; },
+    render: function(): ReactElement<any> { return <TextEventsExample />; },
   },
   {
     title: 'Colored input text',
@@ -630,7 +630,7 @@ exports.examples = [
   },
   {
     title: 'Blur on submit',
-    render: function(): ReactElement { return <BlurOnSubmitExample />; },
+    render: function(): ReactElement<any> { return <BlurOnSubmitExample />; },
   },
   {
     title: 'Multiline blur on submit',
@@ -695,7 +695,7 @@ exports.examples = [
           <AutoExpandingTextInput
             placeholder="height increases with content"
             enablesReturnKeyAutomatically={true}
-            returnKeyType="done"
+            returnKeyType="default"
           />
         </View>
       );

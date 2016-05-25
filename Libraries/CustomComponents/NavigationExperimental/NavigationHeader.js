@@ -34,7 +34,6 @@
 
 const React = require('React');
 const ReactNative = require('react-native');
-const NavigationContainer = require('NavigationContainer');
 const NavigationHeaderTitle = require('NavigationHeaderTitle');
 const NavigationHeaderBackButton = require('NavigationHeaderBackButton');
 const NavigationPropTypes = require('NavigationPropTypes');
@@ -49,6 +48,7 @@ const {
 } = ReactNative;
 
 import type  {
+  NavigationActionCaller,
   NavigationSceneRenderer,
   NavigationSceneRendererProps,
   NavigationStyleInterpolator,
@@ -64,7 +64,9 @@ type Props = NavigationSceneRendererProps & {
   renderLeftComponent: NavigationSceneRenderer,
   renderRightComponent: NavigationSceneRenderer,
   renderTitleComponent: NavigationSceneRenderer,
-  style?: any;
+  onNavigate: NavigationActionCaller,
+  style?: any,
+  viewProps?: any,
 };
 
 type SubViewName = 'left' | 'title' | 'right';
@@ -85,7 +87,14 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     },
 
     renderLeftComponent: (props: NavigationSceneRendererProps) => {
-      return props.scene.index > 0 ? <NavigationHeaderBackButton /> : null;
+      if (props.scene.index === 0) {
+        return null;
+      }
+      return (
+        <NavigationHeaderBackButton
+          onNavigate={props.onNavigate}
+        />
+      );
     },
 
     renderRightComponent: (props: NavigationSceneRendererProps) => {
@@ -94,11 +103,12 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
   };
 
   static propTypes = {
-    ...NavigationPropTypes.SceneRenderer,
+    ...NavigationPropTypes.SceneRendererProps,
     renderLeftComponent: PropTypes.func,
     renderRightComponent: PropTypes.func,
     renderTitleComponent: PropTypes.func,
     style: View.propTypes.style,
+    viewProps: PropTypes.shape(View.propTypes),
   };
 
   shouldComponentUpdate(nextProps: Props, nextState: any): boolean {
@@ -109,8 +119,8 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     );
   }
 
-  render(): ReactElement {
-    const { scenes, style } = this.props;
+  render(): ReactElement<any> {
+    const { scenes, style, viewProps } = this.props;
 
     const scenesProps = scenes.map(scene => {
       const props = NavigationPropTypes.extractSceneRendererProps(this.props);
@@ -119,7 +129,7 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     });
 
     return (
-      <View style={[ styles.appbar, style ]}>
+      <View style={[ styles.appbar, style ]} {...viewProps}>
         {scenesProps.map(this._renderLeft, this)}
         {scenesProps.map(this._renderTitle, this)}
         {scenesProps.map(this._renderRight, this)}
@@ -127,7 +137,7 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     );
   }
 
-  _renderLeft(props: NavigationSceneRendererProps): ?ReactElement {
+  _renderLeft(props: NavigationSceneRendererProps): ?ReactElement<any> {
     return this._renderSubView(
       props,
       'left',
@@ -136,7 +146,7 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     );
   }
 
-  _renderTitle(props: NavigationSceneRendererProps): ?ReactElement {
+  _renderTitle(props: NavigationSceneRendererProps): ?ReactElement<any> {
     return this._renderSubView(
       props,
       'title',
@@ -145,7 +155,7 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     );
   }
 
-  _renderRight(props: NavigationSceneRendererProps): ?ReactElement {
+  _renderRight(props: NavigationSceneRendererProps): ?ReactElement<any> {
     return this._renderSubView(
       props,
       'right',
@@ -159,7 +169,7 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
     name: SubViewName,
     renderer: NavigationSceneRenderer,
     styleInterpolator: NavigationStyleInterpolator,
-  ): ?ReactElement {
+  ): ?ReactElement<any> {
     const {
       scene,
       navigationState,
@@ -197,6 +207,11 @@ class NavigationHeader extends React.Component<DefaultProps, Props, any> {
       </Animated.View>
     );
   }
+
+  static HEIGHT = APPBAR_HEIGHT + STATUSBAR_HEIGHT;
+  static Title = NavigationHeaderTitle;
+  static BackButton = NavigationHeaderBackButton;
+
 }
 
 const styles = StyleSheet.create({
@@ -241,11 +256,5 @@ const styles = StyleSheet.create({
     top: 0,
   },
 });
-
-NavigationHeader = NavigationContainer.create(NavigationHeader);
-
-NavigationHeader.HEIGHT = APPBAR_HEIGHT + STATUSBAR_HEIGHT;
-NavigationHeader.Title = NavigationHeaderTitle;
-NavigationHeader.BackButton = NavigationHeaderBackButton;
 
 module.exports = NavigationHeader;
