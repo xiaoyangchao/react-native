@@ -1,13 +1,11 @@
 /**
  * Copyright (c) 2014-present, Facebook, Inc.
  * All rights reserved.
+ *
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  */
-
-// NOTE: this file is auto-copied from https://github.com/facebook/css-layout
-// @generated SignedSource<<e87a0b3f12fe2e671deb259075a51dc0>>
 
 package com.facebook.csslayout;
 
@@ -19,10 +17,12 @@ import com.facebook.infer.annotation.Assertions;
 
 import static com.facebook.csslayout.CSSLayout.DIMENSION_HEIGHT;
 import static com.facebook.csslayout.CSSLayout.DIMENSION_WIDTH;
-import static com.facebook.csslayout.CSSLayout.POSITION_BOTTOM;
 import static com.facebook.csslayout.CSSLayout.POSITION_LEFT;
-import static com.facebook.csslayout.CSSLayout.POSITION_RIGHT;
 import static com.facebook.csslayout.CSSLayout.POSITION_TOP;
+import static com.facebook.csslayout.Spacing.BOTTOM;
+import static com.facebook.csslayout.Spacing.LEFT;
+import static com.facebook.csslayout.Spacing.RIGHT;
+import static com.facebook.csslayout.Spacing.TOP;
 
 /**
  * A CSS Node. It has a style object you can manipulate at {@link #style}. After calling
@@ -66,13 +66,13 @@ public class CSSNode {
 
   public int lineIndex = 0;
 
-  /*package*/ CSSNode nextAbsoluteChild;
-  /*package*/ CSSNode nextFlexChild;
+  /*package*/ CSSNode nextChild;
 
   private @Nullable ArrayList<CSSNode> mChildren;
   private @Nullable CSSNode mParent;
   private @Nullable MeasureFunction mMeasureFunction = null;
   private LayoutState mLayoutState = LayoutState.DIRTY;
+  private boolean mIsTextNode = false;
 
   public int getChildCount() {
     return mChildren == null ? 0 : mChildren.size();
@@ -128,6 +128,14 @@ public class CSSNode {
     return mMeasureFunction != null;
   }
 
+  public void setIsTextNode(boolean isTextNode) {
+    mIsTextNode = isTextNode;
+  }
+
+  public boolean isTextNode() {
+    return mIsTextNode;
+  }
+
   /*package*/ MeasureOutput measure(MeasureOutput measureOutput, float width, CSSMeasureMode widthMode, float height, CSSMeasureMode heightMode) {
     if (!isMeasureDefined()) {
       throw new RuntimeException("Measure function isn't defined!");
@@ -142,7 +150,6 @@ public class CSSNode {
    * Performs the actual layout and saves the results in {@link #layout}
    */
   public void calculateLayout(CSSLayoutContext layoutContext) {
-    layout.resetResult();
     LayoutEngine.layoutNode(layoutContext, this, CSSConstants.UNDEFINED, CSSConstants.UNDEFINED, null);
   }
 
@@ -369,15 +376,27 @@ public class CSSNode {
   }
 
   /**
+   * Get this node's position, as defined by style.
+   */
+   public Spacing getPosition() {
+    return style.position;
+  }
+
+  public void setPosition(int spacingType, float position) {
+    if (style.position.set(spacingType, position)) {
+      dirty();
+    }
+  }
+
+  /**
    * Get this node's position top, as defined by style.
    */
   public float getPositionTop() {
-    return style.position[POSITION_TOP];
+    return style.position.get(TOP);
   }
 
   public void setPositionTop(float positionTop) {
-    if (!valuesEqual(style.position[POSITION_TOP], positionTop)) {
-      style.position[POSITION_TOP] = positionTop;
+    if (style.position.set(TOP, positionTop)) {
       dirty();
     }
   }
@@ -386,12 +405,11 @@ public class CSSNode {
    * Get this node's position bottom, as defined by style.
    */
   public float getPositionBottom() {
-    return style.position[POSITION_BOTTOM];
+    return style.position.get(BOTTOM);
   }
 
   public void setPositionBottom(float positionBottom) {
-    if (!valuesEqual(style.position[POSITION_BOTTOM], positionBottom)) {
-      style.position[POSITION_BOTTOM] = positionBottom;
+    if (style.position.set(BOTTOM, positionBottom)) {
       dirty();
     }
   }
@@ -400,12 +418,11 @@ public class CSSNode {
    * Get this node's position left, as defined by style.
    */
   public float getPositionLeft() {
-    return style.position[POSITION_LEFT];
+    return style.position.get(LEFT);
   }
 
   public void setPositionLeft(float positionLeft) {
-    if (!valuesEqual(style.position[POSITION_LEFT], positionLeft)) {
-      style.position[POSITION_LEFT] = positionLeft;
+    if (style.position.set(LEFT, positionLeft)) {
       dirty();
     }
   }
@@ -414,12 +431,11 @@ public class CSSNode {
    * Get this node's position right, as defined by style.
    */
   public float getPositionRight() {
-    return style.position[POSITION_RIGHT];
+    return style.position.get(RIGHT);
   }
 
   public void setPositionRight(float positionRight) {
-    if (!valuesEqual(style.position[POSITION_RIGHT], positionRight)) {
-      style.position[POSITION_RIGHT] = positionRight;
+    if (style.position.set(RIGHT, positionRight)) {
       dirty();
     }
   }
@@ -452,6 +468,62 @@ public class CSSNode {
     }
   }
 
+  /**
+   * Get this node's max width, as defined in the style
+   */
+  public float getStyleMaxWidth() {
+    return style.maxWidth;
+  }
+
+  public void setStyleMaxWidth(float maxWidth) {
+    if (!valuesEqual(style.maxWidth, maxWidth)) {
+      style.maxWidth = maxWidth;
+      dirty();
+    }
+  }
+
+  /**
+   * Get this node's min width, as defined in the style
+   */
+  public float getStyleMinWidth() {
+    return style.minWidth;
+  }
+
+  public void setStyleMinWidth(float minWidth) {
+    if (!valuesEqual(style.minWidth, minWidth)) {
+      style.minWidth = minWidth;
+      dirty();
+    }
+  }
+
+  /**
+   * Get this node's max height, as defined in the style
+   */
+  public float getStyleMaxHeight() {
+    return style.maxHeight;
+  }
+
+  public void setStyleMaxHeight(float maxHeight) {
+    if (!valuesEqual(style.maxHeight, maxHeight)) {
+      style.maxHeight = maxHeight;
+      dirty();
+    }
+  }
+
+  /**
+   * Get this node's min height, as defined in the style
+   */
+  public float getStyleMinHeight() {
+    return style.minHeight;
+  }
+
+  public void setStyleMinHeight(float minHeight) {
+    if (!valuesEqual(style.minHeight, minHeight)) {
+      style.minHeight = minHeight;
+      dirty();
+    }
+  }
+
   public float getLayoutX() {
     return layout.position[POSITION_LEFT];
   }
@@ -477,6 +549,20 @@ public class CSSNode {
    */
   public void setDefaultPadding(int spacingType, float padding) {
     if (style.padding.setDefault(spacingType, padding)) {
+      dirty();
+    }
+  }
+
+  /**
+   * Get this node's overflow property, as defined in the style
+   */
+  public CSSOverflow getOverflow() {
+    return style.overflow;
+  }
+
+  public void setOverflow(CSSOverflow overflow) {
+    if (style.overflow != overflow) {
+      style.overflow = overflow;
       dirty();
     }
   }
